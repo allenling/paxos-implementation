@@ -171,23 +171,22 @@ Leader
 
    5.1 心跳协程, 这些协程定时向其他节点发送心跳
 
-   .. code-block:: python
+       .. code-block:: python
 
-       async def send_node_pong(self, node_name):
-           while not self._stop:
-               # 定时
-               await curio.sleep(NODE_TIMEOUT // 2 + random.randint(100, 500) / 1000)
-               # send ping
-               pong_msg = PongMsg.from_gossip_msg(self.gossip_msg, self)
-               pong_msg.set_from_node(self.node_name)
-               # 发送
-               await self.send_msg_queue.put((node_name, pong_msg))
-           return
+           async def send_node_pong(self, node_name):
+               while not self._stop:
+                   # 定时
+                   await curio.sleep(NODE_TIMEOUT // 2 + random.randint(100, 500) / 1000)
+                   # send ping
+                   pong_msg = PongMsg.from_gossip_msg(self.gossip_msg, self)
+                   pong_msg.set_from_node(self.node_name)
+                   # 发送
+                   await self.send_msg_queue.put((node_name, pong_msg))
+               return
 
    5.2 状态检查协程, 定时取检查节点是否掉线
 
-   5.3 socket.send协程, 这个协程主要是把软件中所有的IO操作都放在一个协程内发送, 这样其他协程就不需要操心发送的逻辑了, 只需要把
-
+   5.3 发送协程, 这个协程主要是把软件中所有的IO操作都放在一个协程内发送, 这样其他协程就不需要操心发送的逻辑了, 只需要把
        目标节点地址, 以及msg对象发送到队列, 那么该协程就一直调用socket.send去发送消息
 
        .. code-block:: python
