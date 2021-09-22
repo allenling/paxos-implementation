@@ -49,6 +49,8 @@ class ProposerState(enum.Enum):
     START_PREPARATION = 0
     PRE_ACCEPT = 10
     START_ACCEPTING = 20
+    ACCEPT_SUCCESS = 30
+    ACCEPT_FAIL = 40
 
 
 class Proposer:
@@ -70,52 +72,51 @@ class Proposer:
         return res
 
     def choose(self, value):
-        print("Proposer %s is going to choose %s" % (self.name, value))
-        min_pn = -1
+        print("############ Proposer %s is going to choose %s" % (self.name, value))
+        pn = -1
         while True:
             self.status = ProposerState.START_PREPARATION
-            pn, value = self.prepare(value, min_pn)  # this value may not equals that passed value
-            min_pn = pn
+            suc, pn, value = self.prepare(value, pn)  # this value may not equals that passed value
+            if suc is False:
+                continue
             self.status = ProposerState.PRE_ACCEPT
             if not self.pre_accept_event.is_set():
                 print("?????????? Proposer %s wait for pre_accept_event!" % self.name)
             self.pre_accept_event.wait()
             self.status = ProposerState.START_ACCEPTING
-            accepted, min_pn = self.accept(pn, value)
+            accepted, pn = self.accept(pn, value)
             if accepted:
+                self.status = ProposerState.ACCEPT_SUCCESS
                 break
+            self.status = ProposerState.ACCEPT_FAIL
         return
 
-    def prepare(self, value, min_pn):
+    def prepare(self, value, pn):
         """
         try to get promises from the majority of acceptors
         """
-        while True:
-            pn = self.get_next_proposal_number(greater=min_pn)
-            min_pn = pn
-            data = {"pn": pn, "proposer": self.name}
-            prepare_request_info = [[acceptr_name, acceptor_url + "/prepare", data] for acceptr_name,acceptor_url in
-                                    self.acceptor_map.items()]
-            resps = send_to_acceptors(prepare_request_info)
-            success_resps = [i for i in resps if i["status"] == "success"]
-            max_prepare_pn = max([i["prepare_pn"] for i in resps if "prepare_pn" in i], default=min_pn)
-            if len(success_resps) < self.majority:
-                min_pn = max_prepare_pn
-                print("Proposer %s prepare %s cant get promises from majority of acceptors, retry" % (self.name, pn))
-                print("Proposer %s choose min_pn %s to accelerate preparation" % (self.name, min_pn))
-                continue
-            print("Proposer %s prepare %s get promises from majority of acceptors, check accepted value" % (self.name, pn))
-            max_accepted_pn, max_accepted_value = float("-inf"), value
-            for i in resps:
-                if i["accepted_pn"] and i["accepted_pn"] > max_accepted_pn:
-                    max_accepted_pn, max_accepted_value = i["accepted_pn"], i["accepted_value"]
-            if max_accepted_pn != float("-inf"):
-                print("Proposer %s abandon original value %s, choose already accepted value %s"
-                      % (self.name, value, max_accepted_value))
-            else:
-                print("Proposer %s choose original value %s" % (self.name, max_accepted_value))
-            break
-        return pn, max_accepted_value
+        pn = self.get_next_proposal_number(greater=pn)
+        data = {"pn": pn, "proposer": self.name}
+        prepare_request_info = [[acceptr_name, acceptor_url + "/prepare", data] for acceptr_name,acceptor_url in
+                                self.acceptor_map.items()]
+        resps = send_to_acceptors(prepare_request_info)
+        success_resps = [i for i in resps if i["status"] == "success"]
+        max_prepare_pn = max([i["prepare_pn"] for i in resps if "prepare_pn" in i], default=pn)
+        if len(success_resps) < self.majority:
+            print("Proposer %s prepare %s cant get promises from majority of acceptors, and choose %s to accelerate preparation" % (self.name, pn, max_prepare_pn))
+            return False, max_prepare_pn, value
+        print("Proposer %s prepare %s get promises from majority of acceptors, check accepted value" % (self.name, pn))
+        max_accepted_pn, max_accepted_value = None, value
+        success_resps = [i for i in success_resps if i["accepted_pn"]]
+        success_resps = sorted(success_resps, key=lambda n: -n["accepted_pn"])
+        if success_resps:
+            max_accepted_pn, max_accepted_value = success_resps[0]["accepted_pn"], success_resps[0]["accepted_value"]
+        if max_accepted_pn is None:
+            print("Proposer %s(pn=%s) choose original value %s" % (self.name, pn, value))
+        else:
+            print("Proposer %s(pn=%s) abandon original value %s, choose already accepted value %s, %s"
+                  % (self.name, pn, value, max_accepted_pn, max_accepted_value))
+        return True, pn, max_accepted_value
 
     def accept(self, pn, value):
         data = {"value": value, "pn": pn, "proposer": self.name}
@@ -224,7 +225,7 @@ class Example:
         self.acceptor_executor = ThreadPoolExecutor(max_workers=len(ports))
         for i in self.acceptors:
             self.acceptor_executor.submit(i.run)
-        time.sleep(1)
+        time.sleep(5)
         self.acceptor_map = {obj.name: "http://localhost:%s" % obj.port for obj in self.acceptors}
         return
 
@@ -237,21 +238,6 @@ class Example:
             i.shutdown()
         return
 
-    def run_example_for_acceleration_preparation(self):
-        self.start_acceptors()
-        odd_proposer = Proposer("odd_proposer", 5, self.acceptor_map, get_odd_yielder())
-        odd_proposer.choose("red")
-        odd1_proposer = Proposer("odd_proposer1", 5, self.acceptor_map, get_odd_yielder())
-        odd1_proposer.choose("red1")
-        odd2_proposer = Proposer("odd_proposer2", 5, self.acceptor_map, get_odd_yielder())
-        odd2_proposer.choose("red2")
-        even_proposer = Proposer("even_proposer", 5, self.acceptor_map, get_even_yielder())
-        even_proposer.choose("blue")
-        input("....\n")
-        for i in self.acceptors:
-            i.shutdown()
-        return
-
     def run_case_one(self):
         """
         chosen one cant be changed
@@ -259,6 +245,7 @@ class Example:
         self.start_acceptors()
         odd_proposer = Proposer("odd_proposer", 5, self.acceptor_map, get_odd_yielder())
         odd_proposer.choose("red")
+        time.sleep(10)
         even_proposer = Proposer("even_proposer", 5, self.acceptor_map, get_even_yielder())
         even_proposer.choose("blue")
         input("....\n")
@@ -274,38 +261,22 @@ class Example:
         odd_proposer = Proposer("odd_proposer", 5, self.acceptor_map, get_odd_yielder())
         even_proposer = Proposer("even_proposer", 5, self.acceptor_map, get_even_yielder())
         odd_proposer.pre_accept_event.clear()
-        proposer_executor = ThreadPoolExecutor(max_workers=1)
+        proposer_executor = ThreadPoolExecutor(max_workers=3)
         proposer_executor.submit(odd_proposer.choose, "red")
         while True:
             if odd_proposer.status == ProposerState.PRE_ACCEPT:
                 break
             time.sleep(1)
-        even_proposer.choose("blue")
-        odd_proposer.pre_accept_event.set()  # red covered by blue
-        input("....\n")
-        for i in self.acceptors:
-            i.shutdown()
-        return
-
-    def run_case_two_one(self):
-        """
-        larger proposal number reject smaller proposal number
-        and this time, we only send request to the majority of acceptors, not all of acceptors
-        """
-        self.start_acceptors()
-        odd_proposer_acceptor_map = {obj.name: "http://localhost:%s" % obj.port for obj in self.acceptors[:3]}
-        odd_proposer = Proposer("odd_proposer", 5, odd_proposer_acceptor_map, get_odd_yielder())
-        even_proposer_acceptor_map = {obj.name: "http://localhost:%s" % obj.port for obj in self.acceptors[2:]}
-        even_proposer = Proposer("even_proposer", 5, even_proposer_acceptor_map, get_even_yielder())
-        odd_proposer.pre_accept_event.clear()
-        proposer_executor = ThreadPoolExecutor(max_workers=1)
-        proposer_executor.submit(odd_proposer.choose, "red")
+        proposer_executor.submit(even_proposer.choose, "blue")
         while True:
-            if odd_proposer.status == ProposerState.PRE_ACCEPT:
+            if even_proposer.status == ProposerState.ACCEPT_SUCCESS:
                 break
             time.sleep(1)
-        even_proposer.choose("blue")
         odd_proposer.pre_accept_event.set()  # red covered by blue
+        while True:
+            if odd_proposer.status == ProposerState.ACCEPT_SUCCESS:
+                break
+            time.sleep(1)
         input("....\n")
         for i in self.acceptors:
             i.shutdown()
@@ -313,14 +284,42 @@ class Example:
 
     def run_case_three(self):
         """
+        larger proposal number reject smaller proposal number
+        and this time, we only send request to the majority of acceptors, not all of acceptors
         """
-        self.run_case_two_one()
+        self.start_acceptors()
+        # odd proposer connects to a0, a1, a2
+        odd_proposer_acceptor_map = {obj.name: "http://localhost:%s" % obj.port for obj in self.acceptors[:3]}
+        odd_proposer = Proposer("odd_proposer", 5, odd_proposer_acceptor_map, get_odd_yielder())
+        # even proposer connects to a2, a3, a4
+        even_proposer_acceptor_map = {obj.name: "http://localhost:%s" % obj.port for obj in self.acceptors[2:]}
+        even_proposer = Proposer("even_proposer", 5, even_proposer_acceptor_map, get_even_yielder())
+        odd_proposer.pre_accept_event.clear()
+        proposer_executor = ThreadPoolExecutor(max_workers=3)
+        proposer_executor.submit(odd_proposer.choose, "red")
+        while True:
+            if odd_proposer.status == ProposerState.PRE_ACCEPT:
+                break
+            time.sleep(1)
+        proposer_executor.submit(even_proposer.choose, "blue")
+        while True:
+            if even_proposer.status == ProposerState.ACCEPT_SUCCESS:
+                break
+            time.sleep(1)
+        odd_proposer.pre_accept_event.set()  # red covered by blue
+        while True:
+            if odd_proposer.status == ProposerState.ACCEPT_SUCCESS:
+                break
+            time.sleep(1)
+        input("....\n")
+        for i in self.acceptors:
+            i.shutdown()
         return
 
     def run_case_four(self):
         """
         no one can chose a value!
-        they are in a dead cycle, no one can break out!
+        there is a live lock, no one can break out!
         """
         self.start_acceptors()
         odd_proposer_acceptor_map = {obj.name: "http://localhost:%s" % obj.port for obj in self.acceptors[:3]}
@@ -329,7 +328,7 @@ class Example:
         even_proposer = Proposer("even_proposer", 5, even_proposer_acceptor_map, get_even_yielder())
         odd_proposer.pre_accept_event.clear()
         even_proposer.pre_accept_event.clear()
-        proposer_executor = ThreadPoolExecutor(max_workers=2)
+        proposer_executor = ThreadPoolExecutor(max_workers=3)
         proposer_executor.submit(odd_proposer.choose, "red")
         while True:
             if odd_proposer.status == ProposerState.PRE_ACCEPT:
@@ -372,10 +371,9 @@ class Example:
 
 def main():
     # Example().run_basic_paxos_one_proposer()
-    # Example().run_example_for_acceleration_preparation()
     # Example().run_case_one()
     # Example().run_case_two()
-    # Example().run_case_two_one()
+    # Example().run_case_three()
     Example().run_case_four()
     return
 
