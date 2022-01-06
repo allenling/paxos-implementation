@@ -1,7 +1,15 @@
 Paxos!
 ################
 
-非拜占庭Paxos及其变种的实现
+稍微理解一下"一致性"
+
+1. http://zhangtielei.com/posts/blog-distributed-consistency.html
+2. http://zhangtielei.com/posts/blog-distributed-strong-weak-consistency.html
+3. http://zhangtielei.com/posts/blog-distributed-causal-consistency.html
+4. http://zhangtielei.com/posts/blog-time-clock-ordering.html
+5. https://wudaijun.com/2018/09/distributed-consistency/
+
+这里主要是非拜占庭Paxos及其变种的实现
 
 1. https://vadosware.io/post/paxosmon-gotta-concensus-them-all/#generalized-paxos-in-a-single-reductive-sentence
 
