@@ -24,7 +24,8 @@ let's cut to the chase and take a look at when a value can be considered as chos
 
 > The value is chosen when a large enough set of acceptors have accepted it. How large is large enough?
 To ensure that only a single value is chosen, we can let a large enough set consist of any majority of the agents.
-> - Paxos Made Simple
+> 
+> -- Paxos Made Simple
 
 the necessary and sufficient condition for a value becoming chosen is simple and straightfoward, which is that a value has
 accepted by a majority of acceptors.
@@ -86,9 +87,11 @@ and then the question is can we propose whatever value we want?
 
 no, according to the safety requirements for consensus:
 
->• Only a value that has been proposed may be chosen,
-• Only a single value is chosen, and
-• A process never learns that a value has been chosen unless it actually has been.
+> • Only a value that has been proposed may be chosen,  
+> • Only a single value is chosen, and  
+> • A process never learns that a value has been chosen unless it actually has been.
+> 
+> -- Paxos Made Simple
 
 the first one implies that if you ever see any value that was being proposed before, the value you will be proposing must be one
 of them, you can not write the value you wanted. 
@@ -236,11 +239,13 @@ but this requirement can be weakened further under particular conditions.
 
 > A leader can send its "1a" and "2a" messages just to a quorum of acceptors. As long as all acceptors in that quorum are
 working and can communicate with the leader and the learners, there is no need for acceptors not in the quorum to do anything.
+> 
 > -- Cheap Paxos
 
 > Paxos uses majority quorums of acceptors for both Q1 and Q2. By requiring that quorums contain at least a majority of acceptors
 we can guarantee that there will be at least one acceptor in common between any two quorums. Paxos's proof of safety and
 progress is built upon this assumption that all quorums intersect.
+> 
 > -- Flexible Paxos(FPaxos)
 
 why?
@@ -258,6 +263,7 @@ leader election is a must for the efficiency of MultiPaxos, not a necessity for 
 > Election of a single leader is needed only to ensure progress.
 > Key to the efficiency of this approach is that, in the Paxos consensus algorithm, the value to be proposed is not chosen until 
 phase 2.
+> 
 > -- Paxos Made Simple
 
 leader selection requires to be partition tolerant, and it is, compared to consensus itself, a trivial problem to solve.
@@ -282,6 +288,7 @@ we are using randomized timers in hope of a new leader being elected as quickly 
 the drawback of this approache is that servers might enter a live lock where no leader would be elected.
 
 > However, without extra measures split votes could repeat indefinitely.
+> 
 > -- Raft
 
 here we make some little adjustments to the original approach.
