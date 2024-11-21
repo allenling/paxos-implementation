@@ -1,9 +1,0 @@
-nodes:
-  1: 127.0.0.1:6666
-  2: 127.0.0.1:6667
-  3: 127.0.0.1:6668
-log_level: INFO
-disable_leadership: null  # set node id list
-disable_pong: null # set node id list
-ignore_accept: null # set node id list
-pipeline_alpha: 1  # null or any number <= 0 means float("-inf")
