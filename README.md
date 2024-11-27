@@ -137,7 +137,7 @@ if now a leaner started to learn the chosen value, would V1 being considered as 
 
 even though it was clearly accepted by a majority of acceptors, the short answer is no, V1 was not chosen yet, why?
 
-we once wrote an email to lamport to try to get a full explanation, and lamport did reply and said:
+we once wrote an email to lamport to try to get a full explanation, and lamport did reply saying that:
 
 > If you are confused, please read the original paper that contains the unambiguous mathematical description of the algorithm.
 
